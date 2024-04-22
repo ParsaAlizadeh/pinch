@@ -15,7 +15,7 @@
             (A)->arr = erealloc((A)->arr, sizeof((A)->arr[0]) * newcap); \
             (A)->cap = newcap;                                          \
         }                                                               \
-    } while (0);
+    } while (0)
 
 #define ArrayPinchN(A, N) do {                                          \
         if ((A)->len + (N) > (A)->cap) {                                \
@@ -25,17 +25,17 @@
             (A)->arr = erealloc((A)->arr, sizeof((A)->arr[0]) * newcap); \
             (A)->cap = newcap;                                          \
         }                                                               \
-    } while (0);
+    } while (0)
 
 #define Append(A, X) do {                       \
         ArrayPinch(A);                          \
         (A)->arr[(A)->len++] = (X);             \
-    } while (0);
+    } while (0)
 
 #define ArrayRelease(A) do {                    \
         free((A)->arr);                         \
         ArrayZero(A);                           \
-    } while (0);
+    } while (0)
 
 #define ArrayLast(A) ((A)->arr[(A)->len-1])
 

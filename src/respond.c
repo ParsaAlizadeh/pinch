@@ -8,7 +8,6 @@
 #include <sys/socket.h>
 #include "array.h"
 #include "httpcode.h"
-#include "magicfile.h"
 
 enum {
     NBUF = 1024
@@ -197,17 +196,16 @@ static void Done(void) {
         Str loc = {0};
         EncodeURL(&loc, content.arr);
         Sprintf(s, "Location: %s\r\n", loc.arr);
-        ArrayClear(&loc);
+        ArrayRelease(&loc);
     } else {
         Sprintf(s, "Content-Length: %ld\r\n", StrLen(&content));
         if (StrLen(&content) > 0 && contenttype != NULL)
             Sprintf(s, "Content-Type: %s\r\n", contenttype);
         Sprintf(s, "\r\n");
         if (StrLen(&content) > 0 && strcmp(status[0].arr, "HEAD") != 0) {
-            s->len--;
-            for (size_t i = 0; i < StrLen(&content); i++)
-                Append(s, content.arr[i]);
-            Append(s, '\0');
+            ArrayPinchN(s, StrLen(&content));
+            memmove(&ArrayLast(s), content.arr, StrLen(&content)+1);
+            s->len += StrLen(&content);
         }
     }
     Send(s->arr, StrLen(s));
@@ -224,7 +222,7 @@ static void SetError(int code, const char *err) {
     Str errstr = {0};
     EscapeHTML(&errstr, err);
     Sprintf(&content, "<p>%s</p>", errstr.arr);
-    ArrayClear(&errstr);
+    ArrayRelease(&errstr);
     Sprintf(&content, "</body></html>");
 }
 
@@ -296,23 +294,16 @@ static int WriteFile(const char *filename) {
         }
         /* not reached */
     }
+    httpcode = OK;
     int c;
     while ((c = fgetc(f)) != EOF)
         Append(&content, c);
     Append(&content, '\0');
     if (ferror(f)) {
-        ArrayClear(&content);
+        ArrayRelease(&content);
         SetError(INTERNAL_ERR, "Something went wrong (really bad)");
         return -1;
     }
-    /*
-    contenttype = magic_file(magic, filename);
-    if (contenttype == NULL) {
-        weprintf("magic_file: %s", magic_error(magic));
-        contenttype = "application/octet-stream";
-    }
-    weprintf("Content-Type: %s", contenttype);
-    */
     return 0;
 }
 
@@ -403,9 +394,9 @@ static int WriteDirectory(const char *name) {
         free(e->name);
     }
     Sprintf(&content, "</ul></body></html>");
-    ArrayClear(&entries);
-    ArrayClear(&tmpname);
-    ArrayClear(&tmpurl);
+    ArrayRelease(&entries);
+    ArrayRelease(&tmpname);
+    ArrayRelease(&tmpurl);
     closedir(dir);
     return 0;
 }
@@ -456,10 +447,10 @@ done:
     shutdown(fd, SHUT_RDWR);
     /* clear variables */
     contenttype = NULL;
-    ArrayClear(&content);
+    ArrayRelease(&content);
     for (size_t i = 0; i < headers.len; i++) {
-        ArrayClear(&headers.arr[i].name);
-        ArrayClear(&headers.arr[i].value);
+        ArrayRelease(&headers.arr[i].name);
+        ArrayRelease(&headers.arr[i].value);
     }
     headers.len = 0;
 }

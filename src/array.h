@@ -15,14 +15,24 @@
             (A)->arr = erealloc((A)->arr, sizeof((A)->arr[0]) * newcap); \
             (A)->cap = newcap;                                          \
         }                                                               \
-    } while(0);
+    } while (0);
+
+#define ArrayPinchN(A, N) do {                                          \
+        if ((A)->len + (N) > (A)->cap) {                                \
+            size_t newcap = (A)->cap == 0 ? 2 : (A)->cap;               \
+            while ((A)->len + (N) > newcap)                             \
+                newcap *= 2;                                            \
+            (A)->arr = erealloc((A)->arr, sizeof((A)->arr[0]) * newcap); \
+            (A)->cap = newcap;                                          \
+        }                                                               \
+    } while (0);
 
 #define Append(A, X) do {                       \
         ArrayPinch(A);                          \
         (A)->arr[(A)->len++] = (X);             \
     } while (0);
 
-#define ArrayClear(A) do {                      \
+#define ArrayRelease(A) do {                    \
         free((A)->arr);                         \
         ArrayZero(A);                           \
     } while (0);

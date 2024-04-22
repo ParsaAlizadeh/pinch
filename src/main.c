@@ -4,9 +4,8 @@
 #include <netinet/ip.h>
 #include "eprintf.h"
 #include "respond.h"
-#include "magicfile.h"
 
-static int port, sockfd, cfd;
+static int port, sockfd, cfd, childcnt;
 
 static void SigintHandler(int signo) {
     (void)signo;
@@ -22,7 +21,6 @@ int main(int argc, char *argv[]) {
     } else {
         port = 2222;
     }
-    InitMagic();
     if (signal(SIGINT, SigintHandler) == SIG_ERR)
         eprintf("setting signal handler:");
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -38,9 +36,19 @@ int main(int argc, char *argv[]) {
         eprintf("listen on socket:");
     weprintf("[%d]: listening on 127.0.0.1:%d...", getpid(), port);
     while ((cfd = accept(sockfd, NULL, NULL)) != -1) {
-        weprintf("new connection");
-        Respond(cfd);
-        close(cfd);
+        weprintf("[%d] new connection", childcnt);
+        pid_t pid;
+        if ((pid = fork()) == -1)
+            eprintf("fork:");
+        else if (pid == 0) {
+            /* child */
+            Respond(cfd);
+            close(cfd);
+            exit(0);
+        } else {
+            /* parent */
+            childcnt++;
+        }
     }
     eprintf("accept connection:");
     /* not reached */

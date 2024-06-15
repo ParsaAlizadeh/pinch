@@ -1,15 +1,26 @@
-#include <unistd.h>
+#include <errno.h>
+#include <netinet/ip.h>
 #include <signal.h>
 #include <sys/socket.h>
-#include <netinet/ip.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include "eprintf.h"
 #include "respond.h"
 
-static int port, sockfd, cfd, childcnt;
+static int port, sockfd, cfd;
+static int active_children;
 
-static void SigintHandler(int signo) {
+static void SigIntHandler(int signo) {
     (void)signo;
     eprintf("interupt");
+}
+
+static void SigChldHandler(int signo) {
+    (void)signo;
+    int saved_errno = errno;
+    while (waitpid(-1, NULL, WNOHANG) > 0)
+        active_children--;
+    errno = saved_errno;
 }
 
 int main(int argc, char *argv[]) {
@@ -21,11 +32,25 @@ int main(int argc, char *argv[]) {
     } else {
         port = 2222;
     }
-    if (signal(SIGINT, SigintHandler) == SIG_ERR)
-        eprintf("setting signal handler:");
+    /* Setup SIGINT and SIGCHLD handlers */
+    struct sigaction sigact;
+    sigact.sa_handler = SigIntHandler;
+    sigemptyset(&sigact.sa_mask);
+    sigact.sa_flags = SA_RESTART;
+    if (sigaction(SIGINT, &sigact, NULL) == -1)
+        eprintf("setting sigint handler:");
+    sigact.sa_handler = SigChldHandler;
+    sigemptyset(&sigact.sa_mask);
+    sigact.sa_flags = SA_RESTART;
+    if (sigaction(SIGCHLD, &sigact, NULL) == -1)
+        eprintf("setting sigchld handler:");
+    /* Setup server socket */
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd == -1)
         eprintf("creating socket:");
+    int reuseaddr_opt = 1;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr_opt, sizeof(reuseaddr_opt)) == -1)
+        eprintf("set socket options:");
     struct sockaddr_in addr = {0};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
@@ -34,9 +59,10 @@ int main(int argc, char *argv[]) {
         eprintf("binding on 127.0.0.1:%d:", port);
     if (listen(sockfd, 0) == -1)
         eprintf("listen on socket:");
-    weprintf("[%d]: listening on 127.0.0.1:%d...", getpid(), port);
+    weprintf("[%d]: listening on http://127.0.0.1:%d ...", getpid(), port);
+    /* Main loop */
     while ((cfd = accept(sockfd, NULL, NULL)) != -1) {
-        weprintf("[%d] new connection", childcnt);
+        weprintf("[%d] new connection", active_children);
         pid_t pid;
         if ((pid = fork()) == -1)
             eprintf("fork:");
@@ -47,7 +73,7 @@ int main(int argc, char *argv[]) {
             exit(0);
         } else {
             /* parent */
-            childcnt++;
+            active_children++;
         }
     }
     eprintf("accept connection:");

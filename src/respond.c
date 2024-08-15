@@ -277,6 +277,8 @@ static int PopHeaders(void) {
     return 0;
 }
 
+static char filebuf[NBUF];
+
 static int WriteFile(const char *filename) {
     FILE *f = fopen(filename, "r");
     if (f == NULL) {
@@ -295,9 +297,13 @@ static int WriteFile(const char *filename) {
         /* not reached */
     }
     httpcode = OK;
-    int c;
-    while ((c = fgetc(f)) != EOF)
-        Append(&content, c);
+    size_t nread;
+    content.len = 0;
+    while ((nread = fread(filebuf, sizeof(char), NBUF, f)) > 0) {
+        ArrayPinchN(&content, nread);
+        memmove(&content.arr[content.len], filebuf, nread);
+        content.len += nread;
+    }
     Append(&content, '\0');
     if (ferror(f)) {
         ArrayRelease(&content);

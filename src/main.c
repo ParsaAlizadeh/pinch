@@ -11,6 +11,7 @@
 
 enum {
     MUX = 4,
+    PORT = 2222,
 };
 
 static int port, sockfd, cfd;
@@ -38,7 +39,7 @@ int main(int argc, char *argv[]) {
         if (port <= 0 || port >= (1<<16))
             eprintf("invalid port number");
     } else {
-        port = 2222;
+        port = PORT;
     }
     /* Initialize semaphore */
     if (sem_init(&multiplex, 1, MUX) != 0)

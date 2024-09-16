@@ -1,14 +1,20 @@
 #include <errno.h>
 #include <netinet/ip.h>
+#include <semaphore.h>
 #include <signal.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include "eprintf.h"
 #include "respond.h"
 
+enum {
+    MUX = 4,
+};
+
 static int port, sockfd, cfd;
-static int active_children;
+static sem_t multiplex;
 
 static void SigIntHandler(int signo) {
     (void)signo;
@@ -18,8 +24,10 @@ static void SigIntHandler(int signo) {
 static void SigChldHandler(int signo) {
     (void)signo;
     int saved_errno = errno;
-    while (waitpid(-1, NULL, WNOHANG) > 0)
-        active_children--;
+    while (waitpid(-1, NULL, WNOHANG) > 0) {
+        if (sem_post(&multiplex) != 0)
+            eprintf("posting on semaphore:");
+    }
     errno = saved_errno;
 }
 
@@ -32,6 +40,9 @@ int main(int argc, char *argv[]) {
     } else {
         port = 2222;
     }
+    /* Initialize semaphore */
+    if (sem_init(&multiplex, 1, MUX) != 0)
+        eprintf("initializing semaphore:");
     /* Setup SIGINT and SIGCHLD handlers */
     struct sigaction sigact;
     sigact.sa_handler = SigIntHandler;
@@ -62,7 +73,9 @@ int main(int argc, char *argv[]) {
     weprintf("[%d]: listening on http://127.0.0.1:%d ...", getpid(), port);
     /* Main loop */
     while ((cfd = accept(sockfd, NULL, NULL)) != -1) {
-        weprintf("[%d] new connection", active_children);
+        weprintf("new connection accepted");
+        if (sem_wait(&multiplex) != 0)
+            eprintf("waiting on semaphore:");
         pid_t pid;
         if ((pid = fork()) == -1)
             eprintf("fork:");
@@ -73,7 +86,6 @@ int main(int argc, char *argv[]) {
             exit(0);
         } else {
             /* parent */
-            active_children++;
         }
     }
     eprintf("accept connection:");
